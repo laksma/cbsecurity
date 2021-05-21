@@ -420,7 +420,7 @@ component accessors="true" extends="coldbox.system.Interceptor" {
 			// Are we in a whitelist?
 			if ( isInPattern( matchTarget, thisRule.whitelist ) ) {
 				if ( log.canDebug() ) {
-					log.debug( "#matchTarget# found in whitelist: #thisRule.whitelist#, allowing access." );
+					log.debug( "#matchTarget# found in whitelist: #thisRule.whitelist.toString()#, allowing access." );
 				}
 				continue;
 			}
