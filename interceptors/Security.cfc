@@ -420,7 +420,7 @@ component accessors="true" extends="coldbox.system.Interceptor" {
 			// Are we in a whitelist?
 			if ( isInPattern( matchTarget, thisRule.whitelist ) ) {
 				if ( log.canDebug() ) {
-					log.debug( "#matchTarget# found in whitelist: #thisRule.whitelist#, allowing access." );
+					log.debug( "#matchTarget# found in whitelist: #thisRule.whitelist.toString()#, allowing access." );
 				}
 				continue;
 			}
@@ -428,7 +428,7 @@ component accessors="true" extends="coldbox.system.Interceptor" {
 			// Are we in the secured list?
 			if ( isInPattern( matchTarget, thisRule.securelist ) ) {
 				if ( log.canDebug() ) {
-					log.debug( "---> Incoming '#matchTarget#' MATCHED this rule: #thisRule.toString()#" );
+					log.debug( "---> Incoming '#matchTarget#' MATCHED this rule: #thisRule.securelist.toString()#" );
 				}
 
 				// Verify if user is logged in and in a secure state
