@@ -426,7 +426,9 @@ component accessors="true" extends="coldbox.system.Interceptor" {
 			// Are we in a whitelist?
 			if ( isInPattern( matchTarget, thisRule.whitelist ) ) {
 				if ( log.canDebug() ) {
-					log.debug( "#matchTarget# found in whitelist: #thisRule.whitelist.toString()#, allowing access." );
+					log.debug(
+						"#matchTarget# found in whitelist: #thisRule.whitelist.toString()#, allowing access."
+					);
 				}
 
 				variables.dbLogger.log(
@@ -443,7 +445,9 @@ component accessors="true" extends="coldbox.system.Interceptor" {
 			// Are we in the secured list and in the rule's valid http methods and in the allowed Ips
 			if ( isInPattern( matchTarget, thisRule.securelist ) ) {
 				if ( log.canDebug() ) {
-					log.debug( "---> Incoming '#matchTarget#' MATCHED this rule: #thisRule.securelist.toString()#" );
+					log.debug(
+						"---> Incoming '#matchTarget#' MATCHED this rule: #thisRule.securelist.toString()#"
+					);
 				}
 
 				// Check authentication and authorizations
