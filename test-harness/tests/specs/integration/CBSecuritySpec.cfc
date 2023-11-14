@@ -14,15 +14,13 @@
  *	* eventArguments : The struct of args to pass to the event
  *	* renderResults : Render back the results of the event
  *******************************************************************************/
-component
-	extends="coldbox.system.testing.BaseTestCase"
-	appMapping="/root"
-{
+component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
 
-/*********************************** LIFE CYCLE Methods ***********************************/
+	this.unloadColdBox = false;
+
+	/*********************************** LIFE CYCLE Methods ***********************************/
 
 	function beforeAll(){
-		structDelete( application, "cbController" );
 		super.beforeAll();
 		// do your own stuff here
 	}
@@ -32,25 +30,21 @@ component
 		super.afterAll();
 	}
 
- /*********************************** BDD SUITES ***********************************/
+	/*********************************** BDD SUITES ***********************************/
 
 	function run(){
 		describe( "CBSecurity Integrations", function(){
-			beforeEach( function(currentSpec){
+			beforeEach( function( currentSpec ){
 				// Setup as a new ColdBox request for this suite, VERY IMPORTANT. ELSE EVERYTHING LOOKS LIKE THE SAME REQUEST.
 				setup();
 				cbauth = getInstance( "authenticationService@cbauth" );
 				cbauth.logout();
 			} );
 
-
 			it( "can retrieve user,auth and mixin services", function(){
-				var e = this.request( route : "/main/cbsecuremixin" );
+				var e = get( "/main/cbsecuremixin" );
 				expect( e.getRenderedContent() ).toBeJSON();
-			});
-
-
-
+			} );
 		} );
 	}
 

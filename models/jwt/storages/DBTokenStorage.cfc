@@ -20,7 +20,7 @@
  * - subject : varchar 255
  *
  */
-component accessors="true" singleton {
+component accessors="true" singleton threadsafe {
 
 	// DI
 	property name="wirebox"    inject="wirebox";
@@ -28,6 +28,7 @@ component accessors="true" singleton {
 	property name="settings"   inject="coldbox:moduleSettings:cbSecurity";
 	property name="jwtService" inject="JwtService@cbSecurity";
 	property name="log"        inject="logbox:logger:{this}";
+	property name="scheduler"  inject="executor:coldbox-tasks";
 
 	/**
 	 * Storage properties
@@ -65,6 +66,8 @@ component accessors="true" singleton {
 	 * @properties The storage properties
 	 *
 	 * @return JWTStorage
+	 *
+	 * @throws PropertyNotDefined - When no table property is defined
 	 */
 	any function configure( required properties ){
 		variables.properties = arguments.properties;
@@ -98,24 +101,16 @@ component accessors="true" singleton {
 		// DB Rotation Time
 		variables.lastDBRotation = "";
 
+		// Create Rotation Scheduler
+		variables.scheduler
+			.newSchedule( this, "doRotation" )
+			.delay( variables.properties.rotationFrequency ) // Don't start immediately, give it a breathing room
+			.spacedDelay( variables.properties.rotationFrequency ) // Runs again, after this spaced delay once each reap finalizes
+			.inMinutes()
+			.start();
+		variables.log.info( "Rotation scheduled task started for DBTokenStorage" );
+
 		return this;
-	}
-
-	/**
-	 * Rotation checks
-	 */
-	function rotationCheck(){
-		// Verify if in rotation frequency
-		if (
-			isDate( variables.lastDBRotation )
-			AND
-			dateDiff( "n", variables.lastDBRotation, now() ) LTE variables.properties.rotationFrequency
-		) {
-			return;
-		}
-
-		// Rotations
-		this.doRotation();
 	}
 
 	/**
@@ -139,20 +134,12 @@ component accessors="true" singleton {
 			  FROM #getTable()#
 			 WHERE expiration < :targetDate
 			",
-			{
-				targetDate : {
-					cfsqltype : "timestamp",
-					value     : targetDate
-				}
-			},
+			{ targetDate : { cfsqltype : "timestamp", value : targetDate } },
 			{
 				datasource : variables.properties.dsn,
 				result     : "local.qResults"
 			}
 		);
-
-		// Store last profile time
-		variables.lastDBRotation = now();
 
 		if ( variables.log.canInfo() ) {
 			variables.log.info( "DBTokenStorage finalized rotation", qResults );
@@ -164,10 +151,10 @@ component accessors="true" singleton {
 	/**
 	 * Set a token in the storage
 	 *
-	 * @key The cache key
-	 * @token The token to store
+	 * @key        The cache key
+	 * @token      The token to store
 	 * @expiration The token expiration
-	 * @payload The payload
+	 * @payload    The payload
 	 *
 	 * @return JWTStorage
 	 */
@@ -193,14 +180,8 @@ component accessors="true" singleton {
 					cfsqltype : "varchar",
 					value     : "#variables.uuid.randomUUID().toString()#"
 				},
-				cacheKey : {
-					cfsqltype : "varchar",
-					value     : arguments.key
-				},
-				token : {
-					cfsqltype : "longvarchar",
-					value     : arguments.token
-				},
+				cacheKey   : { cfsqltype : "varchar", value : arguments.key },
+				token      : { cfsqltype : "longvarchar", value : arguments.token },
 				expiration : {
 					cfsqltype : "timestamp",
 					value     : jwtService.fromEpoch( arguments.payload.exp )
@@ -209,16 +190,10 @@ component accessors="true" singleton {
 					cfsqltype : "timestamp",
 					value     : jwtService.fromEpoch( arguments.payload.iat )
 				},
-				subject : {
-					cfsqltype : "varchar",
-					value     : arguments.payload.sub
-				}
+				subject : { cfsqltype : "varchar", value : arguments.payload.sub }
 			},
 			{ datasource : variables.properties.dsn }
 		);
-
-		// Run rotation checks
-		rotationCheck();
 
 		return this;
 	}
@@ -229,9 +204,6 @@ component accessors="true" singleton {
 	 * @key The cache key
 	 */
 	boolean function exists( required key ){
-		// Run rotation checks first!
-		rotationCheck();
-
 		// Verify now
 		var qResults = queryExecute(
 			"SELECT cacheKey
@@ -241,12 +213,9 @@ component accessors="true" singleton {
 			",
 			{
 				cacheKey : arguments.key,
-				now      : {
-					cfsqltype : "timestamp",
-					value     : now()
-				}
+				now      : { cfsqltype : "timestamp", value : now() }
 			},
-			{ datsource : variables.properties.dsn }
+			{ datasource : variables.properties.dsn }
 		);
 
 		return qResults.recordcount > 0;
@@ -255,15 +224,12 @@ component accessors="true" singleton {
 	/**
 	 * Retrieve the token via the cache key, if the key doesn't exist a TokenNotFoundException will be thrown
 	 *
-	 * @key The cache key
+	 * @key          The cache key
 	 * @defaultValue If not found, return a default value
 	 *
 	 * @throws TokenNotFoundException
 	 */
 	struct function get( required key, struct defaultValue ){
-		// Run rotation checks first
-		rotationCheck();
-
 		// select entry
 		var q = queryExecute(
 			"SELECT cacheKey, token, expiration, issued
@@ -271,7 +237,7 @@ component accessors="true" singleton {
 				WHERE cacheKey = ?
 			",
 			[ arguments.key ],
-			{ datsource : variables.properties.dsn }
+			{ datasource : variables.properties.dsn }
 		);
 
 		// Just return if records found, else null
@@ -298,9 +264,6 @@ component accessors="true" singleton {
 	 * @return JWTStorage
 	 */
 	any function clear( required any key ){
-		// Run rotation checks
-		rotationCheck();
-
 		queryExecute(
 			"DELETE
 			   FROM #getTable()#
@@ -308,8 +271,8 @@ component accessors="true" singleton {
 			",
 			[ arguments.key ],
 			{
-				datsource : variables.properties.dsn,
-				result    : "local.q"
+				datasource : variables.properties.dsn,
+				result     : "local.q"
 			}
 		);
 
@@ -325,7 +288,7 @@ component accessors="true" singleton {
 		queryExecute(
 			"TRUNCATE TABLE #getTable()#",
 			{},
-			{ datsource : variables.properties.dsn }
+			{ datasource : variables.properties.dsn }
 		);
 
 		return this;
@@ -338,11 +301,13 @@ component accessors="true" singleton {
 		var qResults = queryExecute(
 			"SELECT cacheKey FROM #getTable()# ORDER BY cacheKey ASC",
 			{},
-			{ datsource : variables.properties.dsn }
+			{ datasource : variables.properties.dsn }
 		);
 
 		return (
-			variables.isLucee ? queryColumnData( qResults, "cacheKey" ) : listToArray( valueList( qResults.cacheKey ) )
+			variables.isLucee ? queryColumnData( qResults, "cacheKey" ) : listToArray(
+				valueList( qResults.cacheKey )
+			)
 		);
 	}
 
@@ -355,7 +320,7 @@ component accessors="true" singleton {
 			   FROM #getTable()#
 			",
 			{},
-			{ datsource : variables.properties.dsn }
+			{ datasource : variables.properties.dsn }
 		);
 
 		return q.totalCount;
@@ -403,7 +368,11 @@ component accessors="true" singleton {
 
 		if ( variables.properties.autocreate ) {
 			// Get Tables on this DSN
-			cfdbinfo(datasource="#variables.properties.dsn#", name="local.qTables", type="tables");
+			cfdbinfo(
+				datasource = "#variables.properties.dsn#",
+				name       = "local.qTables",
+				type       = "tables"
+			);
 			// Find the table
 			for ( var thisRecord in local.qTables ) {
 				if ( thisRecord.table_name == variables.properties.table ) {
@@ -445,7 +414,11 @@ component accessors="true" singleton {
 	private function getTextColumnType(){
 		var qResults = "";
 
-		cfdbinfo(type="Version", name="qResults", datasource="#variables.properties.dsn#");
+		cfdbinfo(
+			type       = "Version",
+			name       = "qResults",
+			datasource = "#variables.properties.dsn#"
+		);
 
 		switch ( qResults.database_productName ) {
 			case "PostgreSQL": {
@@ -472,7 +445,11 @@ component accessors="true" singleton {
 	private function getDateTimeColumnType(){
 		var qResults = "";
 
-		cfdbinfo(type="Version", name="qResults", datasource="#variables.properties.dsn#");
+		cfdbinfo(
+			type       = "Version",
+			name       = "qResults",
+			datasource = "#variables.properties.dsn#"
+		);
 
 		switch ( qResults.database_productName ) {
 			case "PostgreSQL": {

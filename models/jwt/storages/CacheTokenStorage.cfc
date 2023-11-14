@@ -4,7 +4,7 @@
  * ---
  * A CacheBox cache based token storage
  */
-component accessors="true" singleton {
+component accessors="true" singleton threadsafe {
 
 	// DI
 	property name="wirebox"    inject="wirebox";
@@ -53,10 +53,10 @@ component accessors="true" singleton {
 	/**
 	 * Set a token in the storage
 	 *
-	 * @key The cache key
-	 * @token The token to store
+	 * @key        The cache key
+	 * @token      The token to store
 	 * @expiration The token expiration
-	 * @payload The payload
+	 * @payload    The payload
 	 *
 	 * @return JWTStorage
 	 */
@@ -67,14 +67,15 @@ component accessors="true" singleton {
 		required payload
 	){
 		variables.cache.set(
-			buildKey( arguments.key ),
-			{
+			objectKey = buildKey( arguments.key ),
+			object    = {
 				token      : arguments.token,
 				expiration : jwtService.fromEpoch( arguments.payload.exp ),
 				issued     : jwtService.fromEpoch( arguments.payload.iat ),
 				payload    : arguments.payload
 			},
-			arguments.expiration
+			timeout           = arguments.expiration,
+			lastAccessTimeout = 0
 		);
 		return this;
 	}
@@ -91,7 +92,7 @@ component accessors="true" singleton {
 	/**
 	 * Retrieve the token via the cache key, if the key doesn't exist a TokenNotFoundException will be thrown
 	 *
-	 * @key The cache key
+	 * @key          The cache key
 	 * @defaultValue If not found, return a default value
 	 *
 	 * @throws TokenNotFoundException

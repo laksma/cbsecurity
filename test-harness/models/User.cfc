@@ -1,4 +1,4 @@
-component accessors="true" {
+component accessors="true" implements="cbsecurity.interfaces.jwt.IJwtSubject" {
 
 	property name="auth" inject="authenticationService@cbauth";
 
@@ -27,8 +27,11 @@ component accessors="true" {
 	/**
 	 * A struct of custom claims to add to the JWT token
 	 */
-	struct function getJWTCustomClaims(){
-		return { "role" : "admin" };
+	struct function getJWTCustomClaims( required struct payload ){
+		return {
+			"duplicatedJTI": arguments.payload.jti,
+			"role" : "admin"
+		};
 	}
 
 	/**
@@ -54,13 +57,6 @@ component accessors="true" {
 				return ( variables.permissions.findNoCase( item ) );
 			} )
 			.len();
-	}
-
-	/**
-	 * Shortcut to verify it the user is logged in or not.
-	 */
-	boolean function isLoggedIn(){
-		return auth.isLoggedIn();
 	}
 
 }

@@ -14,15 +14,13 @@
  *	* eventArguments : The struct of args to pass to the event
  *	* renderResults : Render back the results of the event
  *******************************************************************************/
-component
-	extends="coldbox.system.testing.BaseTestCase"
-	appMapping="/root"
-{
+component extends="coldbox.system.testing.BaseTestCase" appMapping="/root" {
+
+	this.unloadColdbox = false;
 
 	/*********************************** LIFE CYCLE Methods ***********************************/
 
 	function beforeAll(){
-		structDelete( application, "cbController" );
 		super.beforeAll();
 		// do your own stuff here
 	}
@@ -36,19 +34,20 @@ component
 
 	function run(){
 		describe( "Security module", function(){
-			beforeEach( function(currentSpec){
+			beforeEach( function( currentSpec ){
 				// Setup as a new ColdBox request for this suite, VERY IMPORTANT. ELSE EVERYTHING LOOKS LIKE THE SAME REQUEST.
 				setup();
 				cbauth = getInstance( "authenticationService@cbauth" );
 				cbauth.logout();
 			} );
 
-
 			describe( "Rule based Security", function(){
 				it( "should load the rules from inline declaration", function(){
 					var rules = getWireBox()
 						.getInstance( "interceptor-cbsecurity@global" )
-						.getProperty( "rules" );
+						.getProperty( "firewall" )
+						.rules
+						.inline;
 					expect( rules ).notToBeEmpty();
 				} );
 
@@ -58,6 +57,25 @@ component
 						var event = execute( event = "admin.index", renderResults = true );
 						// should have protected it
 						expect( "main.index" ).toBe( event.getValue( "relocate_event" ) );
+					} );
+				} );
+
+				// match public with post|put
+				given( "a secure event of public with a put,post http method constraint", function(){
+					when( "when logged in and using a put or post", function(){
+						then( "it should do allow it to be executed", function(){
+							cbauth.authenticate( "test", "test" );
+							var event = put( "putpost" );
+							expect( "putpost" ).toBe( event.getRenderedContent() );
+						} );
+					} );
+					when( "when logged in and using a GET", function(){
+						then( "it should NOT allow it to be executed", function(){
+							var event      = get( "putpost" );
+							var renderData = event.getRenderData();
+							expect( renderData.statusCode ).toBe( 401 );
+							expect( renderData.data ).toInclude( "Unathorized" );
+						} );
 					} );
 				} );
 
@@ -116,19 +134,20 @@ component
 					given( "a module unload call", function(){
 						then( "it should unload module rules if the module is unloaded", function(){
 							var security = getWireBox().getInstance( "interceptor-cbsecurity@global" );
-							var oldRules = security.getProperty( "rules" );
+							var oldRules = security.getProperty( "firewall" ).rules.inline;
 
 							// Issue unload
 							getController().getModuleService().unload( "mod1" );
 
 							// Verify
-							expect( security.getSecurityModules() ).notToHaveKey( "mod1" );
-							expect( security.getProperty( "rules" ).len() ).toBeLT( oldRules.len() );
+							expect( security.getProperties().securityModules ).notToHaveKey( "mod1" );
+							expect( security.getProperty( "firewall" ).rules.inline.len() ).toBeLT(
+								oldRules.len()
+							);
 						} );
 					} );
 				} );
 			} );
-
 
 			describe( "Annotation based Security", function(){
 				given( "a public handler and action", function(){
@@ -154,7 +173,7 @@ component
 
 				given( "A secured annotated handler and an annotated action and a valid access", function(){
 					then( "it should allow access", function(){
-						prepareMock( getInstance( "CBAuthValidator@cbSecurity" ) ).$(
+						prepareMock( getInstance( "AuthValidator@cbSecurity" ) ).$(
 							"annotationValidator",
 							{ allow : true, type : "authentication" }
 						);
@@ -165,7 +184,7 @@ component
 
 				given( "A secured annotated handler and an annotated action with invalid auth", function(){
 					then( "it should allow access to handler but not to action", function(){
-						prepareMock( getInstance( "CBAuthValidator@cbSecurity" ) )
+						prepareMock( getInstance( "AuthValidator@cbSecurity" ) )
 							.$( "annotationValidator" )
 							.$results(
 								{ allow : true, type : "authentication" },
